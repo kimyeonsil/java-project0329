@@ -5,6 +5,8 @@ import java.awt.Choice;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
 import java.io.BufferedReader;
@@ -21,7 +23,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-public class GamePanel extends JPanel implements ItemListener {
+public class GamePanel extends JPanel implements ItemListener, ActionListener, Runnable {
 	GameWindow gameWindow;
 
 	JPanel p_west; // 왼쪽 컨트롤 영역
@@ -32,14 +34,17 @@ public class GamePanel extends JPanel implements ItemListener {
 	Choice choice; // 단어 선택 드랍박스
 	JTextField t_input; // 게임 입력창
 	JButton bt_start, bt_pause; // 게임 시작 버튼
-	String res = "C:/java__workspace2/project0329/src/res";
+	String res = "C:/java__workspace2/project0329/src/res/";
 
 	FileInputStream fis;
 	InputStreamReader reader;// 파일 대상 문자스트림
 	BufferedReader buffr;// 문자기반 버퍼스트림
-	
-	//조사한 단어를 담아놓자 게임에 써먹기 위해
-	ArrayList<String> wordList=new ArrayList<String>();
+
+	// 조사한 단어를 담아놓자 게임에 써먹기 위해
+	ArrayList<String> wordList = new ArrayList<String>();
+	Thread thread;// 단어게임을 진행할 쓰레드
+	boolean flag = true;// 게임을 멈출 수 있는 변수
+	ArrayList<word> words = new ArrayList<word>();
 
 	public GamePanel(GameWindow gameWindow) {
 		setLayout(new BorderLayout());
@@ -47,12 +52,22 @@ public class GamePanel extends JPanel implements ItemListener {
 		this.gameWindow = gameWindow;
 
 		p_west = new JPanel();
-		
-		//이영역은 지금부터 그림을 그릴 영역
-		p_center = new JPanel(){
-			public void paint(Graphics g) {
-			g.drawString("고등어", 200, 500);
-			
+
+		// 이영역은 지금부터 그림을 그릴 영역
+		p_center = new JPanel() {
+
+			public void paintComponent(Graphics g) {
+				// 기존 그림 지우기
+				g.setColor(Color.WHITE);
+				g.fillRect(0, 0, 750, 700);
+
+				g.setColor(Color.BLUE);
+
+				// 모든 워드들에 대한 render();
+				for (int i = 0; i < words.size(); i++) {
+					words.get(i).render(g);
+				}
+
 			}
 		};
 		la_user = new JLabel("김연실 님");
@@ -77,10 +92,15 @@ public class GamePanel extends JPanel implements ItemListener {
 		p_west.add(la_score);
 
 		add(p_west, BorderLayout.WEST);
+		add(p_center);
+
+		// 버튼과 리스너 연결
+		bt_start.addActionListener(this);
+		bt_pause.addActionListener(this);
 
 		setVisible(false); // 최초에 등장하지 않음
 
-		//setBackground(Color.PINK);
+		// setBackground(Color.PINK);
 		setPreferredSize(new Dimension(900, 700));
 
 		getCategory();
@@ -112,40 +132,119 @@ public class GamePanel extends JPanel implements ItemListener {
 		if (index != 0) {// 첫번재 요소는 빼고
 			String name = choice.getSelectedItem();
 			System.out.println(res + name);
-			
+
 			try {
-				fis=new FileInputStream(res+name);
+				fis = new FileInputStream(res + name);
 				try {
-					reader = new InputStreamReader(fis,"utf-8");
+					reader = new InputStreamReader(fis, "utf-8");
 				} catch (UnsupportedEncodingException e1) {
 					e1.printStackTrace();
 				}
-				
-				//스트림을 버퍼 처리 수준까지 올림
-				buffr=new BufferedReader(reader);
-				String data;
-				
-				while(true){
-					data=buffr.readLine();//한줄
-					if(data==null)break;
-						System.out.println(data);
-						
-						wordList.add(data);
-					}
+
+				// 스트림을 버퍼 처리 수준까지 올림
+				buffr = new BufferedReader(reader);
+				String data = "";
+
+				while (true) {
+
 					try {
-						buffr.readLine();
-					if(fis!=null)break;
-					
+						data = buffr.readLine();
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
-					
-				} catch (FileNotFoundException e) {
-					e.printStackTrace();
-				}	
+					if (data == null)
+						break;
+					System.out.println(data);
+
+					wordList.add(data);
+				}
+				// 준비 된 단어를 화면에 보여주기
+				createword();
+
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+			} finally {
+				if (reader != null) {
+					try {
+						reader.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				if (fis != null) {
+					try {
+						fis.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				if (buffr != null) {
+					try {
+						buffr.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
 			}
+
+		}
 	}
+
+	public void createword() {
+		for (int i = 0; i < wordList.size(); i++) {
+			String name = wordList.get(i);
+			word word = new word(name, i * (75 + 10), 100);
+
+			// 워드객체명단 만들기
+			words.add(word);
+
+		}
+	}
+
+	// 게임시작
+	public void startGame() {
+		if (thread == null) {
+			thread = new Thread(this);
+			thread.start();
+		}
+	}
+
+	// 게임중지
+	public void pauseGame() {
+
+	}
+
 	public void itemStateChanged(ItemEvent e) {
 		getword();
+	}
+
+	public void actionPerformed(ActionEvent e) {
+		Object obj = e.getSource();
+
+		if (obj == bt_start) {
+			startGame();
+
+		} else if (obj == bt_pause) {
+		}
+	}
+
+	public void run() {
+		while (true) {
+			try {
+				Thread.sleep(500);
+				// down();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			// 모든 단어들에 대해서 tick()
+			for (int i = 0; i < words.size(); i++) {
+				words.get(i).tick();
+			}
+			// 모든 단어들에 대해서 render()
+			p_center.repaint();
+		}
 	}
 }
